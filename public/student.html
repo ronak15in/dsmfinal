@@ -4,7 +4,30 @@
   <meta charset="UTF-8">
   <title>Student Portal - GraphExam</title>
   <link rel="stylesheet" href="/css/style.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+  <style>
+    .student-dashboard {
+      display: flex;
+      justify-content: center;
+      height: auto;
+    }
+    .questions-panel {
+      width: 100%;
+      max-width: 800px;
+    }
+    .lockout-panel {
+      text-align: center;
+      padding: 4rem;
+      width: 100%;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .lockout-score {
+      font-size: 3rem;
+      font-weight: 800;
+      color: var(--success);
+      margin-top: 1rem;
+    }
+  </style>
 </head>
 <body>
   <div class="container">
@@ -15,16 +38,17 @@
 
     <div class="timer" id="timerDisplay">60s</div>
 
-    <div class="student-dashboard">
-      <div class="questions-panel glass-panel">
-        <h3>Graph Questions</h3>
+    <div class="student-dashboard" id="mainDashboard">
+      <div class="questions-panel glass-panel" id="qPanel">
+        <h3>Exam Questions</h3>
         <div id="questionsContainer">Loading questions...</div>
+        <button class="btn btn-submit" style="margin-top: 2rem; width: 100%; padding: 1rem; font-size: 1.2rem;" onclick="submitAllAnswers()">Submit Entire Exam</button>
       </div>
-
-      <div class="graph-panel glass-panel">
-        <h3>Live Graph View</h3>
-        <p style="color:var(--text-muted); font-size: 0.9rem;">Visualizing vertices (Time, Student, Questions) and edges (Submissions)</p>
-        <div id="cy"></div>
+      
+      <div class="lockout-panel glass-panel" id="lockoutPanel" style="display: none;">
+        <h2>Exam Completed</h2>
+        <p style="color: var(--text-muted); font-size: 1.2rem;">You have already submitted your answers for this exam.</p>
+        <div class="lockout-score" id="finalScoreDisplay"></div>
       </div>
     </div>
   </div>
@@ -36,24 +60,41 @@
     if (!studentId) window.location.href = '/';
     document.getElementById('studentName').innerText = studentId;
 
-    let cy = cytoscape({
-      container: document.getElementById('cy'),
-      style: [
-        { selector: 'node', style: { 'label': 'data(label)', 'background-color': '#3b82f6', 'color': '#fff', 'text-valign': 'center', 'text-halign': 'center', 'font-size': '12px', 'width': 40, 'height': 40 }},
-        { selector: 'node[type="time"]', style: { 'background-color': '#eab308' }},
-        { selector: 'node[type="student"]', style: { 'background-color': '#a855f7' }},
-        { selector: 'node[type="question"]', style: { 'background-color': '#10b981', 'shape': 'rectangle', 'width': 'label', 'padding': '10px' }},
-        { selector: 'node[type="option"]', style: { 'background-color': '#64748b', 'width': 20, 'height': 20 }},
-        { selector: 'node[type="submission"]', style: { 'background-color': '#f43f5e', 'shape': 'diamond' }},
-        { selector: 'edge', style: { 'width': 2, 'line-color': '#cbd5e1', 'target-arrow-color': '#cbd5e1', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'label': 'data(label)', 'font-size': '10px', 'color': '#fff', 'text-background-color': '#000', 'text-background-opacity': 0.5 }},
-        { selector: 'edge[type="submits"]', style: { 'line-color': '#a855f7', 'target-arrow-color': '#a855f7' }},
-        { selector: 'edge[type="answers"]', style: { 'line-color': '#10b981', 'target-arrow-color': '#10b981' }},
-      ]
-    });
+    let totalQuestionsCount = 0;
+
+    async function checkStatus() {
+      const res = await fetch(`/api/student/status?id=${studentId}`);
+      const status = await res.json();
+      if (status.hasSubmitted) {
+         showLockout(status.score);
+         return true;
+      }
+      return false;
+    }
+
+    function showLockout(score) {
+      document.getElementById('qPanel').style.display = 'none';
+      document.getElementById('timerDisplay').style.display = 'none';
+      const lockout = document.getElementById('lockoutPanel');
+      lockout.style.display = 'block';
+      if (score !== null && score !== undefined && totalQuestionsCount > 0) {
+        document.getElementById('finalScoreDisplay').innerText = `Score: ${score} / ${totalQuestionsCount}`;
+      } else if (score !== null) {
+         // Hack to fetch total qs if it wasn't loaded 
+         fetch('/api/questions').then(r=>r.json()).then(qs => {
+             document.getElementById('finalScoreDisplay').innerText = `Score: ${score} / ${qs.length}`;
+         });
+      }
+      clearInterval(window.timerInt);
+    }
 
     async function loadQuestions() {
+      if (await checkStatus()) return;
+
       const res = await fetch('/api/questions');
       const questions = await res.json();
+      totalQuestionsCount = questions.length;
+      
       const container = document.getElementById('questionsContainer');
       container.innerHTML = '';
       
@@ -66,10 +107,9 @@
         `).join('');
 
         container.innerHTML += `
-          <div class="question-card" id="card_${q.id}">
+          <div class="question-card" id="card_${q.id}" data-qid="${q.id}">
             <div class="question-title">${q.text}</div>
             ${optionsHtml}
-            <button class="btn btn-submit" style="margin-top: 1rem; width: 100%;" onclick="submitAnswer('${q.id}')">Submit Answer</button>
           </div>
         `;
       });
@@ -82,37 +122,30 @@
       setTimeout(() => t.className = 'toast', 3000);
     }
 
-    async function submitAnswer(questionId) {
-      const checked = document.querySelector(`input[name="${questionId}"]:checked`);
-      if (!checked) return showToast('Please select an option first!', 'error');
-
-      const res = await fetch('/api/submit', {
+    async function submitAllAnswers() {
+      const cards = document.querySelectorAll('.question-card');
+      let submissions = [];
+      
+      cards.forEach(card => {
+        const qid = card.getAttribute('data-qid');
+        const checked = card.querySelector(`input[name="${qid}"]:checked`);
+        if (checked) {
+          submissions.push({ questionId: qid, optionId: checked.value });
+        }
+      });
+      
+      const res = await fetch('/api/submit-all', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId, questionId, optionId: checked.value })
+        body: JSON.stringify({ studentId, submissions })
       });
       const data = await res.json();
 
       if (data.success) {
-        showToast('Valid submission added to graph!', 'success');
-        refreshGraph();
-        document.querySelector(`#card_${questionId} button`).disabled = true;
+        showToast('Exam submitted successfully!', 'success');
+        checkStatus(); 
       } else {
-        showToast(`Graph Constraint Error: ${data.error}`, 'error');
+        showToast(`Submission Error: ${data.error}`, 'error');
       }
-    }
-
-    async function refreshGraph() {
-      const res = await fetch('/api/graph');
-      const data = await res.json();
-      
-      const elements = [];
-      data.nodes.forEach(n => elements.push({ data: { id: n.id, type: n.type, label: n.type === 'student' ? n.data.name : (n.type==='question' ? 'Q' : (n.type==='time'? 'Time' : n.id)) } }));
-      // Highlight the active student by filtering which submissions are shown. To keep simple, show all edges
-      data.edges.forEach(e => elements.push({ data: { id: e.id, source: e.from, target: e.to, type: e.type, label: e.type } }));
-      
-      cy.elements().remove();
-      cy.add(elements);
-      cy.layout({ name: 'cose', padding: 20, animate: true, nodeRepulsion: 400000, idealEdgeLength: 50 }).run();
     }
 
     async function checkTime() {
@@ -121,6 +154,10 @@
        const elapsed = data.now - data.start;
        let remaining = Math.max(0, Math.floor((data.duration - elapsed) / 1000));
        
+       if (document.getElementById('lockoutPanel').style.display === 'block') {
+         return; 
+       }
+
        const timerDisplay = document.getElementById('timerDisplay');
        timerDisplay.innerText = `${remaining}s`;
        
@@ -130,8 +167,7 @@
        if (remaining <= 0) {
            timerDisplay.innerText = "TIME OVER";
            clearInterval(window.timerInt);
-           // disable all submit buttons
-           document.querySelectorAll('.btn-submit').forEach(b => b.disabled = true);
+           submitAllAnswers(); 
        }
     }
 
@@ -141,9 +177,7 @@
     }
 
     loadQuestions();
-    refreshGraph();
     window.timerInt = setInterval(checkTime, 1000);
-    setInterval(refreshGraph, 3000); // live graph updates
   </script>
 </body>
 </html>

@@ -5,9 +5,21 @@
   <title>Teacher Portal - GraphExam</title>
   <link rel="stylesheet" href="/css/style.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+  <style>
+    .teacher-dashboard {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 2rem;
+      height: calc(100vh - 150px);
+    }
+    .scoreboard-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    .scoreboard-table th { border-bottom: 2px solid var(--glass-border); padding-bottom: 0.5rem; text-align: left; color: var(--text-muted);}
+    .scoreboard-table td { padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .score-high { color: var(--success); font-weight: bold; }
+  </style>
 </head>
 <body>
-  <div class="container">
+  <div class="container" style="max-width: 1400px;">
     <div class="nav-bar">
       <h2>GraphExam | Teacher Portal</h2>
       <div>
@@ -16,26 +28,40 @@
       </div>
     </div>
 
-    <div class="student-dashboard">
-      <div class="glass-panel">
-        <h3>Add New Question</h3>
-        <input type="text" id="qText" placeholder="Question Text" />
-        <input type="text" id="opt0" placeholder="Option 1" />
-        <input type="text" id="opt1" placeholder="Option 2" />
-        <input type="text" id="opt2" placeholder="Option 3" />
-        <input type="text" id="opt3" placeholder="Option 4" />
-        
-        <label style="display:block; margin: 1rem 0;">
-          Correct Option Index (0-3):
-          <input type="number" id="correctIdx" min="0" max="3" value="0" style="width:100px; margin-left: 1rem;"/>
-        </label>
-        
-        <button class="btn" style="width: 100%" onclick="addQuestion()">Add Question to Graph Model</button>
+    <div class="teacher-dashboard">
+      <div style="display:flex; flex-direction:column; gap: 2rem; overflow-y: auto; padding-right: 1rem;">
+        <div class="glass-panel">
+          <h3>Add New Question</h3>
+          <input type="text" id="qText" placeholder="Question Text" />
+          <input type="text" id="opt0" placeholder="Option 1" />
+          <input type="text" id="opt1" placeholder="Option 2" />
+          <input type="text" id="opt2" placeholder="Option 3" />
+          <input type="text" id="opt3" placeholder="Option 4" />
+          
+          <label style="display:block; margin: 1rem 0;">
+            Correct Option Index (1-4):
+            <input type="number" id="correctIdx" min="1" max="4" value="1" style="width:100px; margin-left: 1rem;"/>
+          </label>
+          
+          <button class="btn" style="width: 100%" onclick="addQuestion()">Add Question to Graph</button>
+        </div>
+
+        <div class="glass-panel">
+          <h3>Live Scoreboard</h3>
+          <table class="scoreboard-table">
+            <thead>
+              <tr><th>Student ID</th><th>Final Score</th></tr>
+            </thead>
+            <tbody id="scoreTableBody">
+              <tr><td colspan="2" style="text-align:center; color: var(--text-muted);">Awaiting submissions...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <div class="graph-panel glass-panel">
+      <div class="graph-panel glass-panel" style="display: flex; flex-direction: column;">
         <h3>Global Graph State</h3>
-        <div id="cy"></div>
+        <div id="cy" style="flex-grow: 1; min-height: 500px;"></div>
       </div>
     </div>
   </div>
@@ -46,23 +72,89 @@
     let cy = cytoscape({
       container: document.getElementById('cy'),
       style: [
-        { selector: 'node', style: { 'label': 'data(label)', 'background-color': '#64748b', 'color': '#fff', 'text-valign': 'center', 'text-halign': 'center', 'font-size': '12px' }},
-        { selector: 'node[type="question"]', style: { 'background-color': '#10b981', 'shape': 'rectangle', 'width': 60, 'height': 30 }},
-        { selector: 'edge', style: { 'width': 2, 'line-color': '#cbd5e1', 'target-arrow-color': '#cbd5e1', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'label': 'data(label)', 'font-size': '10px', 'color': '#fff' }}
+        { selector: 'node', style: { 'label': 'data(label)', 'background-color': '#3b82f6', 'color': '#fff', 'text-valign': 'center', 'text-halign': 'center', 'font-size': '12px', 'font-family': 'Outfit, sans-serif', 'font-weight': '600', 'width': 45, 'height': 45, 'border-width': 2, 'border-color': '#60a5fa', 'text-outline-width': 2, 'text-outline-color': '#0f172a', 'transition-property': 'background-color, border-width, border-color, width, height', 'transition-duration': '0.3s' }},
+        { selector: 'node[type="time"]', style: { 'background-color': '#f59e0b', 'border-color': '#fde68a', 'shape': 'hexagon', 'width': 55, 'height': 55, 'shadow-blur': 25, 'shadow-color': '#f59e0b', 'shadow-opacity': 0.6 }},
+        { selector: 'node[type="student"]', style: { 'background-color': '#8b5cf6', 'border-color': '#c4b5fd', 'shape': 'ellipse', 'shadow-blur': 20, 'shadow-color': '#8b5cf6', 'shadow-opacity': 0.6 }},
+        { selector: 'node[type="question"]', style: { 'background-color': '#10b981', 'border-color': '#6ee7b7', 'shape': 'round-rectangle', 'width': 'label', 'padding': '14px', 'shadow-blur': 20, 'shadow-color': '#10b981', 'shadow-opacity': 0.5 }},
+        { selector: 'node[type="option"]', style: { 'background-color': '#475569', 'border-color': '#94a3b8', 'width': 30, 'height': 30 }},
+        { selector: 'node.correct-option', style: { 'background-color': '#10b981', 'border-color': '#a7f3d0', 'border-width': 4, 'shadow-color': '#10b981', 'shadow-blur': 30, 'shadow-opacity': 0.8, 'width': 40, 'height': 40 }},
+        { selector: 'node[type="submission"]', style: { 'background-color': '#f43f5e', 'border-color': '#fda4af', 'shape': 'diamond', 'width': 45, 'height': 45, 'shadow-blur': 20, 'shadow-color': '#f43f5e', 'shadow-opacity': 0.6 }},
+        { selector: 'edge', style: { 'width': 3, 'line-color': '#475569', 'target-arrow-color': '#475569', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'label': 'data(label)', 'font-size': '10px', 'color': '#cbd5e1', 'text-background-color': '#0f172a', 'text-background-opacity': 0.8, 'text-background-padding': '3px', 'text-background-shape': 'roundrectangle', 'transition-property': 'line-color, target-arrow-color, width', 'transition-duration': '0.3s' }},
+        { selector: 'edge[type="submits"]', style: { 'line-color': '#8b5cf6', 'target-arrow-color': '#8b5cf6', 'line-style': 'dashed', 'line-dash-pattern': [6, 4] }},
+        { selector: 'edge[type="answers"]', style: { 'line-color': '#10b981', 'target-arrow-color': '#10b981' }},
+        { selector: 'edge[type="selects"]', style: { 'line-color': '#3b82f6', 'target-arrow-color': '#3b82f6', 'line-style': 'dotted' }},
+        { selector: 'edge[type="has_option"]', style: { 'line-color': '#64748b', 'target-arrow-color': '#64748b', 'line-style': 'solid' }},
+        { selector: 'edge[type="valid_time"]', style: { 'line-color': '#f59e0b', 'target-arrow-color': '#f59e0b' }}
       ]
+    });
+
+    cy.on('mouseover', 'node', function(e){
+      e.target.style({ 'border-width': 4, 'border-color': '#ffffff' });
+      e.target.connectedEdges().style({ 'width': 5, 'line-color': '#ffffff', 'target-arrow-color': '#ffffff' });
+    });
+    cy.on('mouseout', 'node', function(e){
+      e.target.removeStyle();
+      e.target.connectedEdges().removeStyle();
     });
 
     async function refreshGraph() {
       const res = await fetch('/api/graph');
       const data = await res.json();
       
-      const elements = [];
-      data.nodes.forEach(n => elements.push({ data: { id: n.id, type: n.type, label: n.type==='question' ? 'Q '+n.data.text.substring(0,5)+'...' : n.id } }));
-      data.edges.forEach(e => elements.push({ data: { id: e.id, source: e.from, target: e.to, label: e.type } }));
+      let layoutNeeded = false;
+      const incomingNodeIds = new Set(data.nodes.map(n => n.id));
+      const incomingEdgeIds = new Set(data.edges.map(e => e.id));
+
+      let elementsToRemove = cy.elements().filter(ele => {
+        if (ele.isNode() && !incomingNodeIds.has(ele.id())) return true;
+        if (ele.isEdge() && !incomingEdgeIds.has(ele.id())) return true;
+        return false;
+      });
+
+      if (elementsToRemove.length > 0) {
+        cy.remove(elementsToRemove);
+        layoutNeeded = true;
+      }
+
+      data.nodes.forEach(n => {
+        if (!cy.getElementById(n.id).length) {
+          cy.add({ 
+            data: { id: n.id, type: n.type, label: n.type==='question' ? 'Q '+n.data.text.substring(0,5)+'...' : n.id },
+            classes: (n.type === 'option' && n.data && n.data.isCorrect) ? 'correct-option' : ''
+          });
+          layoutNeeded = true;
+        }
+      });
       
-      cy.elements().remove();
-      cy.add(elements);
-      cy.layout({ name: 'cose', padding: 20, animate: true, nodeRepulsion: 400000, idealEdgeLength: 50 }).run();
+      data.edges.forEach(e => {
+        if (!cy.getElementById(e.id).length) {
+          cy.add({ data: { id: e.id, source: e.from, target: e.to, label: e.type } });
+          layoutNeeded = true;
+        }
+      });
+      
+      if (layoutNeeded) {
+        cy.layout({ name: 'cose', padding: 30, animate: true, randomize: false, nodeRepulsion: 800000, idealEdgeLength: 80, animationDuration: 500 }).run();
+      }
+    }
+
+    async function refreshScores() {
+      const res = await fetch('/api/scores');
+      const scores = await res.json();
+      const tbody = document.getElementById('scoreTableBody');
+      
+      if (scores.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; color: var(--text-muted); padding-top: 1rem;">No submissions yet</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = '';
+      scores.forEach(s => {
+        tbody.innerHTML += `<tr>
+          <td>${s.studentId}</td>
+          <td class="score-high">${s.score} / ${s.totalQuestions}</td>
+        </tr>`;
+      });
     }
 
     function showToast(msg, type) {
@@ -80,7 +172,7 @@
         document.getElementById('opt2').value,
         document.getElementById('opt3').value
       ];
-      const correctIdx = parseInt(document.getElementById('correctIdx').value);
+      const correctIdx = parseInt(document.getElementById('correctIdx').value) - 1;
       
       if (!text || opts.some(o => !o)) return alert("Fill all fields");
 
@@ -100,11 +192,14 @@
     async function resetData() {
        await fetch('/api/reset-data', { method: 'POST' });
        refreshGraph();
+       refreshScores();
        showToast('Exam State Terminated and Reset!', 'success');
     }
 
     refreshGraph();
+    refreshScores();
     setInterval(refreshGraph, 5000);
+    setInterval(refreshScores, 3000);
   </script>
 </body>
 </html>

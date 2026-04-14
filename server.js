@@ -55,6 +55,32 @@ app.post('/api/submit', (req, res) => {
   res.json(result);
 });
 
+app.post('/api/submit-all', (req, res) => {
+  const { studentId, submissions } = req.body;
+  examGraph.addEdge(studentId, examGraph.timeNodeId, 'completed_exam');
+
+  let results = [];
+  submissions.forEach(sub => {
+    results.push(examGraph.submitAnswer(studentId, sub.questionId, sub.optionId));
+  });
+  const hasErrors = results.some(r => !r.success);
+  if (hasErrors) {
+      res.json({ success: false, error: results.find(r => !r.success).error });
+  } else {
+      res.json({ success: true });
+  }
+});
+
+app.get('/api/student/status', (req, res) => {
+  const { id } = req.query;
+  const status = examGraph.getStudentStatus(id);
+  res.json(status);
+});
+
+app.get('/api/scores', (req, res) => {
+  res.json(examGraph.calculateAllScores());
+});
+
 app.get('/api/graph', (req, res) => {
   res.json(examGraph.getGraphData());
 });
