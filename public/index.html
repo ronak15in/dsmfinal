@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GraphExam - Online Examination System</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="login-wrapper">
+    <div class="glass-panel login-card">
+      <h1>GraphExam</h1>
+      <p style="color: var(--text-muted); margin-bottom: 2rem;">A time-restricted graph-theoretic exam system.</p>
+      
+      <div id="loginForm">
+        <input type="text" id="studentId" placeholder="Enter Student ID (e.g. S101)" />
+        <button class="btn" onclick="loginStudent()" style="width: 100%; margin-bottom: 1rem;">Login as Student</button>
+      </div>
+
+      <div class="login-options">
+        <a href="/teacher.html" class="btn" style="background: rgba(255,255,255,0.1); color: white;">Teacher Portal</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function loginStudent() {
+      const id = document.getElementById('studentId').value;
+      if (!id) return alert('Enter an ID');
+      
+      const res = await fetch('/api/student/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: id })
+      });
+      const data = await res.json();
+      if (data.success) {
+        localStorage.setItem('studentId', id);
+        // Sync time with server right before directing to student page
+        await fetch('/api/reset-time', { method: 'POST' }); 
+        window.location.href = '/student.html';
+      }
+    }
+  </script>
+</body>
+</html>

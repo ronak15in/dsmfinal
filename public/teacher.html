@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Teacher Portal - GraphExam</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <div class="nav-bar">
+      <h2>GraphExam | Teacher Portal</h2>
+      <div>
+        <button class="btn" style="background: var(--error);" onclick="resetData()">Reset Everything</button>
+        <button class="btn" onclick="window.location.href='/'">Back to Login</button>
+      </div>
+    </div>
+
+    <div class="student-dashboard">
+      <div class="glass-panel">
+        <h3>Add New Question</h3>
+        <input type="text" id="qText" placeholder="Question Text" />
+        <input type="text" id="opt0" placeholder="Option 1" />
+        <input type="text" id="opt1" placeholder="Option 2" />
+        <input type="text" id="opt2" placeholder="Option 3" />
+        <input type="text" id="opt3" placeholder="Option 4" />
+        
+        <label style="display:block; margin: 1rem 0;">
+          Correct Option Index (0-3):
+          <input type="number" id="correctIdx" min="0" max="3" value="0" style="width:100px; margin-left: 1rem;"/>
+        </label>
+        
+        <button class="btn" style="width: 100%" onclick="addQuestion()">Add Question to Graph Model</button>
+      </div>
+
+      <div class="graph-panel glass-panel">
+        <h3>Global Graph State</h3>
+        <div id="cy"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    let cy = cytoscape({
+      container: document.getElementById('cy'),
+      style: [
+        { selector: 'node', style: { 'label': 'data(label)', 'background-color': '#64748b', 'color': '#fff', 'text-valign': 'center', 'text-halign': 'center', 'font-size': '12px' }},
+        { selector: 'node[type="question"]', style: { 'background-color': '#10b981', 'shape': 'rectangle', 'width': 60, 'height': 30 }},
+        { selector: 'edge', style: { 'width': 2, 'line-color': '#cbd5e1', 'target-arrow-color': '#cbd5e1', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'label': 'data(label)', 'font-size': '10px', 'color': '#fff' }}
+      ]
+    });
+
+    async function refreshGraph() {
+      const res = await fetch('/api/graph');
+      const data = await res.json();
+      
+      const elements = [];
+      data.nodes.forEach(n => elements.push({ data: { id: n.id, type: n.type, label: n.type==='question' ? 'Q '+n.data.text.substring(0,5)+'...' : n.id } }));
+      data.edges.forEach(e => elements.push({ data: { id: e.id, source: e.from, target: e.to, label: e.type } }));
+      
+      cy.elements().remove();
+      cy.add(elements);
+      cy.layout({ name: 'cose', padding: 20, animate: true, nodeRepulsion: 400000, idealEdgeLength: 50 }).run();
+    }
+
+    function showToast(msg, type) {
+      const t = document.getElementById('toast');
+      t.innerText = msg;
+      t.className = `toast show ${type}`;
+      setTimeout(() => t.className = 'toast', 3000);
+    }
+
+    async function addQuestion() {
+      const text = document.getElementById('qText').value;
+      const opts = [
+        document.getElementById('opt0').value,
+        document.getElementById('opt1').value,
+        document.getElementById('opt2').value,
+        document.getElementById('opt3').value
+      ];
+      const correctIdx = parseInt(document.getElementById('correctIdx').value);
+      
+      if (!text || opts.some(o => !o)) return alert("Fill all fields");
+
+      const res = await fetch('/api/teacher/add-question', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, options: opts, correctAnswerIndex: correctIdx })
+      });
+      await res.json();
+      
+      showToast("Question added to graph model!", "success");
+      
+      document.getElementById('qText').value = '';
+      opts.forEach((o, i) => document.getElementById(`opt${i}`).value = '');
+      refreshGraph();
+    }
+
+    async function resetData() {
+       await fetch('/api/reset-data', { method: 'POST' });
+       refreshGraph();
+       showToast('Exam State Terminated and Reset!', 'success');
+    }
+
+    refreshGraph();
+    setInterval(refreshGraph, 5000);
+  </script>
+</body>
+</html>
